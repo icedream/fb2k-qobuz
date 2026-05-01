@@ -44,7 +44,7 @@ jobs:
           cmake "-DFOO_DLL=$x64dll" "-DOUTPUT=$output" "-DARCH_X86=FALSE" "-DEXTRA_DLL=$x86dll" -P cmake/package_component.cmake
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: foo_qobuz-windows-msvc
           path: foo_qobuz.fb2k-component
