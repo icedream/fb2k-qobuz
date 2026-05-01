@@ -38,7 +38,7 @@ jobs:
       # Cache both xwin output and fb2k SDK. Key on CMakeLists.txt so a deps
       # change (e.g. SDK version bump) busts the cache.
       - name: Cache .deps
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .deps
           key: deps-linux-${{ hashFiles('CMakeLists.txt') }}
