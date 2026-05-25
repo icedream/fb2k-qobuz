@@ -86,7 +86,7 @@ jobs:
             -P cmake/package_component.cmake
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: foo_qobuz-linux-cross
           path: foo_qobuz.fb2k-component
