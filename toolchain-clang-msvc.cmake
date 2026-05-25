@@ -53,8 +53,15 @@ endforeach()
 # Using absolute path so the CMake compiler-test TUs can also find it.
 set(_FI_FLAG " /FI\"${_REPO_DIR}/compat-include-msvc/pfc_win_extras.h\"")
 
-set(CMAKE_C_FLAGS_INIT   "${_IMSVC_FLAGS}${_FI_FLAG}")
-set(CMAKE_CXX_FLAGS_INIT "${_IMSVC_FLAGS}${_FI_FLAG}")
+# Suppress macro redefinition warnings: SDK headers redefine FOOBAR2000_*
+# macros that are also defined via add_compile_definitions() in CMakeLists.txt.
+# This is benign; we accept the SDK's definitions at include time.
+# C4005 = macro redefinition (MSVC warning code for clang-cl)
+set(_MACRO_REDEF_SUPPRESSION " /wd4005")
+
+set(CMAKE_C_FLAGS_INIT   "${_IMSVC_FLAGS}${_FI_FLAG}${_MACRO_REDEF_SUPPRESSION}")
+set(CMAKE_CXX_FLAGS_INIT "${_IMSVC_FLAGS}${_FI_FLAG}${_MACRO_REDEF_SUPPRESSION}")
+set(CMAKE_RC_FLAGS_INIT  "${_MACRO_REDEF_SUPPRESSION}")
 
 # Library paths for xwin
 set(MSVC_LIB_DIR  "${XWIN_DIR}/crt/lib/x86_64")

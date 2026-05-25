@@ -44,10 +44,12 @@ endforeach()
 
 set(_FI_FLAG " /FI\"${_REPO_DIR}/compat-include-msvc/pfc_win_extras.h\"")
 
-set(CMAKE_C_FLAGS_INIT   "${_IMSVC_FLAGS}${_FI_FLAG}")
-set(CMAKE_CXX_FLAGS_INIT "${_IMSVC_FLAGS}${_FI_FLAG}")
+# Suppress C4005 macro redefinition warnings from SDK headers
+set(_MACRO_REDEF_SUPPRESSION " /wd4005")
 
-# Library paths for xwin x86
+set(CMAKE_C_FLAGS_INIT   "${_IMSVC_FLAGS}${_FI_FLAG}${_MACRO_REDEF_SUPPRESSION}")
+set(CMAKE_CXX_FLAGS_INIT "${_IMSVC_FLAGS}${_FI_FLAG}${_MACRO_REDEF_SUPPRESSION}")
+set(CMAKE_RC_FLAGS_INIT  "${_MACRO_REDEF_SUPPRESSION}")
 set(MSVC_LIB_DIR  "${XWIN_DIR}/crt/lib/x86")
 set(WIN_SDK_UCRT  "${XWIN_DIR}/sdk/lib/ucrt/x86")
 set(WIN_SDK_UM    "${XWIN_DIR}/sdk/lib/um/x86")
