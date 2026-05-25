@@ -90,7 +90,7 @@ jobs:
 
       - name: Sign x64 DLL
         if: steps.codesign.outputs.enabled == 'true'
-        uses: icedream/sign-with-osslsignserver-action@9f2afd6cb375972b372734e9834c1b952d793476
+        uses: icedream/sign-with-osslsignserver-action@eca08fe56e099aa256be9a01c7d15978e665760a
         with:
           url: ${{ secrets.OSSLSIGNSERVER_URL }}
           api-key-secret: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}
@@ -99,7 +99,7 @@ jobs:
 
       - name: Sign x86 DLL
         if: steps.codesign.outputs.enabled == 'true'
-        uses: icedream/sign-with-osslsignserver-action@9f2afd6cb375972b372734e9834c1b952d793476
+        uses: icedream/sign-with-osslsignserver-action@eca08fe56e099aa256be9a01c7d15978e665760a
         with:
           url: ${{ secrets.OSSLSIGNSERVER_URL }}
           api-key-secret: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}

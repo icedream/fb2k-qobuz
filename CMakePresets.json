@@ -4,8 +4,8 @@
     {
       "name": "windows-msvc",
       "displayName": "Windows (MSVC x64)",
-      "description": "Native Windows build with MSVC",
-      "generator": "Visual Studio 17 2022",
+      "description": "Native Windows build with MSVC (VS 2026)",
+      "generator": "Visual Studio 18 2026",
       "architecture": { "value": "x64", "strategy": "set" },
       "binaryDir": "${sourceDir}/build-msvc",
       "cacheVariables": {
@@ -15,8 +15,8 @@
     {
       "name": "windows-msvc-x86",
       "displayName": "Windows (MSVC x86)",
-      "description": "Native Windows 32-bit build with MSVC",
-      "generator": "Visual Studio 17 2022",
+      "description": "Native Windows 32-bit build with MSVC (VS 2026)",
+      "generator": "Visual Studio 18 2026",
       "architecture": { "value": "Win32", "strategy": "set" },
       "binaryDir": "${sourceDir}/build-msvc-x86",
       "cacheVariables": {
