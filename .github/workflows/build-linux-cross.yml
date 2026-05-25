@@ -75,6 +75,37 @@ jobs:
       - name: Build (x86)
         run: cmake --build build-clang-x86 --parallel
 
+      # ── Sign ─────────────────────────────────────────────────────────────
+      - name: Check code-signing prerequisites
+        id: codesign
+        env:
+          OSSLSIGNSERVER_URL: ${{ secrets.OSSLSIGNSERVER_URL }}
+          OSSLSIGNSERVER_API_KEY_SECRET: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}
+        run: |
+          if [[ -n "$OSSLSIGNSERVER_URL" && -n "$OSSLSIGNSERVER_API_KEY_SECRET" && -n "${{ vars.OSSLSIGNSERVER_PROFILE }}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sign x64 DLL
+        if: steps.codesign.outputs.enabled == 'true'
+        uses: icedream/sign-with-osslsignserver-action@9f2afd6cb375972b372734e9834c1b952d793476
+        with:
+          url: ${{ secrets.OSSLSIGNSERVER_URL }}
+          api-key-secret: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}
+          profile: ${{ vars.OSSLSIGNSERVER_PROFILE }}
+          file: ${{ github.workspace }}/build-clang/foo_qobuz.dll
+
+      - name: Sign x86 DLL
+        if: steps.codesign.outputs.enabled == 'true'
+        uses: icedream/sign-with-osslsignserver-action@9f2afd6cb375972b372734e9834c1b952d793476
+        with:
+          url: ${{ secrets.OSSLSIGNSERVER_URL }}
+          api-key-secret: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}
+          profile: ${{ vars.OSSLSIGNSERVER_PROFILE }}
+          file: ${{ github.workspace }}/build-clang-x86/foo_qobuz.dll
+
       # ── Package ──────────────────────────────────────────────────────────
       - name: Package .fb2k-component
         run: |
