@@ -8,7 +8,7 @@ on:
 
 env:
   XWIN_VERSION: "0.9.0"
-  LLVM_VERSION: "20"
+  LLVM_VERSION: "22"
 
 jobs:
   build:
