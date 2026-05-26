@@ -278,7 +278,10 @@ target_include_directories(foo_qobuz PRIVATE
 
 # ---- Compiler flags ------------------------------------------------------
 if(IS_MSVC_LIKE)
-    target_compile_options(foo_qobuz PRIVATE /O2 /W1 /wd4996)
+    # Suppress C4005 (macro redefinition) - SDK headers redefine FOOBAR2000_*
+    # macros that are also defined via add_compile_definitions() in CMakeLists.txt.
+    # This is benign; we accept the SDK's definitions at include time.
+    target_compile_options(foo_qobuz PRIVATE /O2 /W1 /wd4005 /wd4996)
     if(IS_CLANG_CL)
         # clang-cl accepts GCC-style warning suppression flags; native MSVC does not
         target_compile_options(foo_qobuz PRIVATE
