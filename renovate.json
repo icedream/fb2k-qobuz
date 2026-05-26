@@ -4,14 +4,18 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["^\\.github/workflows/build-linux-cross\\.yml$"],
+      "managerFilePatterns": [
+        "/^\\.github/workflows/build-linux-cross\\.yml$/"
+      ],
       "matchStrings": ["XWIN_VERSION: \"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "Jake-Shadle/xwin",
       "datasourceTemplate": "github-releases"
     },
     {
       "customType": "regex",
-      "fileMatch": ["^\\.github/workflows/build-linux-cross\\.yml$"],
+      "managerFilePatterns": [
+        "/^\\.github/workflows/build-linux-cross\\.yml$/"
+      ],
       "matchStrings": ["LLVM_VERSION: \"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "llvm/llvm-project",
       "datasourceTemplate": "github-releases",
