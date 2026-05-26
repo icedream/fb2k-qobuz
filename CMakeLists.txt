@@ -283,8 +283,8 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 if(IS_MSVC_LIKE)
-    # Common MSVC flags
-    set(_MSVC_COMMON "/W1 /wd4005 /wd4996")
+    # Common MSVC flags (use semicolon-separated list for CMake)
+    set(_MSVC_COMMON "/W1;/wd4005;/wd4996")
     
     # Build-type-specific flags
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
