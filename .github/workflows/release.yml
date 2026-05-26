@@ -10,6 +10,7 @@ jobs:
     uses: ./.github/workflows/build-component.yml
     with:
       artifact-name: foo_qobuz-release
+    secrets: inherit
 
   release:
     name: Create GitHub release

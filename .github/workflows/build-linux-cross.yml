@@ -12,3 +12,4 @@ jobs:
     uses: ./.github/workflows/build-component.yml
     with:
       artifact-name: foo_qobuz-linux-cross
+    secrets: inherit
