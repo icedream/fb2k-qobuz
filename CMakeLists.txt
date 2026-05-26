@@ -277,11 +277,26 @@ target_include_directories(foo_qobuz PRIVATE
 )
 
 # ---- Compiler flags ------------------------------------------------------
+# Set default build type for single-config generators (e.g., Unix Makefiles, Ninja)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
+endif()
+
 if(IS_MSVC_LIKE)
+    # Common MSVC flags
+    set(_MSVC_COMMON "/W1 /wd4005 /wd4996")
+    
+    # Build-type-specific flags
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(_MSVC_OPT "/Zi")
+    else()
+        set(_MSVC_OPT "/O2")
+    endif()
+    
     # Suppress C4005 (macro redefinition) - SDK headers redefine FOOBAR2000_*
     # macros that are also defined via add_compile_definitions() in CMakeLists.txt.
     # This is benign; we accept the SDK's definitions at include time.
-    target_compile_options(foo_qobuz PRIVATE /O2 /W1 /wd4005 /wd4996)
+    target_compile_options(foo_qobuz PRIVATE ${_MSVC_OPT} ${_MSVC_COMMON})
     if(IS_CLANG_CL)
         # clang-cl accepts GCC-style warning suppression flags; native MSVC does not
         target_compile_options(foo_qobuz PRIVATE
@@ -293,8 +308,14 @@ if(IS_MSVC_LIKE)
     endif()
 else()
     # MinGW / GCC cross-compile
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(_GCC_OPT "-g")
+    else()
+        set(_GCC_OPT "-O2")
+    endif()
+    
     target_compile_options(foo_qobuz PRIVATE
-        -O2
+        ${_GCC_OPT}
         -Wall
         -Wno-unknown-pragmas
         -Wno-unused-parameter
