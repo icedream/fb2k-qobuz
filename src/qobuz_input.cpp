@@ -39,13 +39,41 @@ static pfc::string8 extract_track_id(const char* path) {
         throw exception_io_data("Unrecognised Qobuz track URL");
 
     const char* id_start = path + std::strlen(prefix);
-    // Find end of ID: stop at '/', '?', '#', or '\0'
+    // Find end of ID: stop at '/', '?', '#', '.', or '\0'
     const char* id_end = id_start;
-    while (*id_end && *id_end != '/' && *id_end != '?' && *id_end != '#')
+    while (*id_end && *id_end != '/' && *id_end != '?' && *id_end != '#' && *id_end != '.')
         ++id_end;
     if (id_end == id_start)
         throw exception_io_data("Empty track ID in Qobuz URL");
     return pfc::string8(id_start, id_end - id_start);
+}
+
+// ---- format_id to extension mapping ----------------------------------------
+
+static const char* format_id_to_ext(int format_id) {
+    switch (format_id) {
+        case 27: // Studio Master FLAC
+        case 7:  // Hi-Res FLAC
+        case 6:  // CD Quality FLAC
+            return "flac";
+        case 5:  // MP3 320 kbps
+            return "mp3";
+        default:
+            return nullptr;  // unknown
+    }
+}
+
+// ---- helper to extract fmt parameter from query string ----------------------
+
+static int extract_format_id_from_url(const char* url) {
+    // Find fmt= in the query string
+    const char* fmt_pos = std::strstr(url, "fmt=");
+    if (!fmt_pos) return 0;  // not found
+    
+    // Parse the integer after fmt=
+    int val = 0;
+    int n = std::sscanf(fmt_pos, "fmt=%d", &val);
+    return (n == 1) ? val : 0;
 }
 
 class qobuz_input_impl : public input_stubs {
@@ -53,6 +81,7 @@ public:
     // ---- static entry-point methods -----------------------------------------
 
     static bool g_is_our_path(const char* p_path, const char* /*p_ext*/) {
+        // Claim qobuz:// URIs so input service is always called for playback/metadata
         return is_qobuz_track_url(p_path);
     }
 
@@ -71,15 +100,36 @@ public:
 
     // ---- open ---------------------------------------------------------------
 
-    void open(service_ptr_t<file> /*p_filehint*/, const char* p_path,
-              t_input_open_reason /*p_reason*/, abort_callback& p_abort)
+    void open(service_ptr_t<file> p_filehint, const char* p_path,
+              t_input_open_reason p_reason, abort_callback& p_abort)
     {
         m_path     = p_path;
         m_track_id = extract_track_id(p_path);
 
-        // Fetch full metadata so get_info() works regardless of whether
-        // decode_initialize() is ever called (e.g., properties dialog).
-        m_track = g_qobuz_api.get_track_info(m_track_id.c_str(), p_abort);
+        // If the filesystem service already opened the HTTP stream, save it for
+        // decode_initialize() to reuse. For info_read we don't need it.
+        m_file = p_filehint;
+
+        // Fetch metadata and stream URL in one shot, so both are available
+        // for get_info() (which may be called for Converter file naming).
+        try {
+            m_track = g_qobuz_api.get_track_info(m_track_id.c_str(), p_abort);
+        } catch (...) {}
+
+        // Resolve stream URL and extract extension early so get_info() can use it.
+        try {
+            int format_id = (int)cfg_quality().get();
+            m_stream_url = g_qobuz_api.get_track_url(m_track_id.c_str(), format_id, p_abort);
+
+            // Extract fmt parameter from the query string and map to file extension.
+            int fmt_from_url = extract_format_id_from_url(m_stream_url.c_str());
+            const char* ext_cstr = format_id_to_ext(fmt_from_url);
+            if (ext_cstr) {
+                m_stream_ext = ext_cstr;
+            } else {
+                m_stream_ext = format_id >= 27 ? "flac" : (format_id == 5 ? "mp3" : "flac");
+            }
+        } catch (...) {}
     }
 
     // ---- file stats ---------------------------------------------------------
@@ -90,8 +140,19 @@ public:
 
     // ---- metadata -----------------------------------------------------------
 
-    void get_info(file_info& p_info, abort_callback& /*p_abort*/) {
-        const QobuzTrack& t = m_track;
+    void get_info(file_info& p_info, abort_callback& p_abort) {
+        QobuzTrack t = m_track;
+        FB2K_console_formatter() << "[qobuz] get_info() track_id='" << m_track_id.c_str()
+            << "' title='" << t.title.c_str() << "'";
+
+        // If metadata wasn't fetched in open() (shouldn't happen, but be safe),
+        // try on-demand using the saved path.
+        if (t.id.empty() && !m_track_id.empty()) {
+            try {
+                t = g_qobuz_api.get_track_info(m_track_id.c_str(), p_abort);
+                m_track = t;
+            } catch (...) {}
+        }
 
         if (!t.title.empty())        p_info.meta_add("TITLE",        t.title.c_str());
         if (!t.artist.empty())       p_info.meta_add("ARTIST",       t.artist.c_str());
@@ -132,16 +193,33 @@ public:
             p_info.info_set_int("channels", t.channels);
         p_info.info_set("codec",    (int)cfg_quality().get() >= 27 ? "FLAC" : "AAC");
         p_info.info_set("encoding", "lossless");
+        // Set file extension so Converter uses the right output filename
+        if (!m_stream_ext.is_empty())
+            p_info.info_set("extension", m_stream_ext.c_str());
+        else
+            p_info.info_set("extension", (int)cfg_quality().get() >= 27 ? "flac" : "m4a");
     }
 
     // ---- decoding -----------------------------------------------------------
 
     void decode_initialize(unsigned p_flags, abort_callback& p_abort) {
-        int format_id = (int)cfg_quality().get();
-        pfc::string8 stream_url =
-            g_qobuz_api.get_track_url(m_track_id.c_str(), format_id, p_abort);
+        // Use the cached stream URL (already resolved in open()).
+        // If for some reason it's empty, we can still try to re-fetch it.
+        pfc::string8 stream_url = m_stream_url;
+        if (stream_url.is_empty()) {
+            int format_id = (int)cfg_quality().get();
+            stream_url = g_qobuz_api.get_track_url(m_track_id.c_str(), format_id, p_abort);
+            FB2K_console_formatter() << "[qobuz] decode_initialize() had to fetch stream_url (cache was empty)";
+        } else {
+            FB2K_console_formatter() << "[qobuz] decode_initialize() using cached stream_url";
+        }
 
-        // Open the inner decoder (built-in FLAC/AAC input) on the HTTPS CDN URL.
+        FB2K_console_formatter() << "[qobuz] decode_initialize() stream_url=" << stream_url.c_str()
+            << " ext=" << (m_stream_ext.is_empty() ? "(empty)" : m_stream_ext.c_str());
+
+        // Always open a fresh HTTP connection for the inner decoder.
+        // The m_file hint (from filesystem service proxy) may be non-seekable
+        // or stale; a fresh open is simpler and more reliable.
         input_entry::g_open_for_decoding(m_inner, nullptr, stream_url, p_abort);
         m_inner->initialize(0, p_flags, p_abort);
     }
@@ -185,7 +263,10 @@ public:
 private:
     pfc::string8                  m_path;
     pfc::string8                  m_track_id;
+    pfc::string8                  m_stream_url;  // cached CDN URL (resolved in open)
+    pfc::string8                  m_stream_ext;  // extension parsed from CDN URL (flac, mp4, …)
     QobuzTrack                    m_track;
+    service_ptr_t<file>           m_file;   // pre-opened HTTP stream from filesystem service
     service_ptr_t<input_decoder>  m_inner;
 };
 
