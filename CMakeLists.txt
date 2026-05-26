@@ -4,6 +4,52 @@ project(foo_qobuz CXX RC)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ---- Version detection from Git tags ----------------------------------------------
+# Uses git describe --always --tags to derive version string, fallback to "dev" if not in a git repo.
+# Format: v1.2.3 -> "1.2.3", v1.2.3-5-gABCDEF -> "1.2.3-5-gABCDEF"
+find_package(Git QUIET)
+if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" describe --always --tags --long
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE FOO_QOBUZ_VERSION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    # Strip leading 'v' if present (v1.2.3 -> 1.2.3)
+    string(REGEX REPLACE "^v" "" FOO_QOBUZ_VERSION "${FOO_QOBUZ_VERSION}")
+else()
+    set(FOO_QOBUZ_VERSION "dev")
+endif()
+
+message(STATUS "foo_qobuz version: ${FOO_QOBUZ_VERSION}")
+
+# Parse version string for PE/VERSIONINFO metadata
+# Input: "1.2.3-5-gABCDEF" or "1.2.3" or "dev"
+# Output: VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_BUILD
+string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" _ "${FOO_QOBUZ_VERSION}")
+if(CMAKE_MATCH_0)
+    set(VERSION_MAJOR "${CMAKE_MATCH_1}")
+    set(VERSION_MINOR "${CMAKE_MATCH_2}")
+    set(VERSION_PATCH "${CMAKE_MATCH_3}")
+else()
+    set(VERSION_MAJOR "0")
+    set(VERSION_MINOR "0")
+    set(VERSION_PATCH "0")
+endif()
+
+# Extract build number from "X-gHASH" suffix (number of commits since tag)
+string(REGEX MATCH "-([0-9]+)-g" _ "${FOO_QOBUZ_VERSION}")
+if(CMAKE_MATCH_1)
+    set(VERSION_BUILD "${CMAKE_MATCH_1}")
+else()
+    set(VERSION_BUILD "0")
+endif()
+
+# Windows PE version format (comma-separated, 4 components for FileVersion/ProductVersion)
+set(VERSION_PE "${VERSION_MAJOR},${VERSION_MINOR},${VERSION_PATCH},${VERSION_BUILD}")
+message(STATUS "PE version: ${VERSION_PE}")
+
 # ---- Architecture detection ----------------------------------------------
 # CMAKE_SYSTEM_PROCESSOR is set by the toolchain file (x86_64 or x86).
 # On a native Windows MSVC build, fall back to CMAKE_VS_PLATFORM_NAME or MSVC_CXX_ARCHITECTURE_ID.
@@ -192,6 +238,14 @@ list(FILTER SDK_FB2K_ALL EXCLUDE REGEX ".*\\.mm$")
 set(SDK_CLIENT_SRC
     "${SDK_DIR}/foobar2000/foobar2000_component_client/component_client.cpp")
 
+# ---- Configure RC file with version variables --------------------------------
+# The RC file uses @VERSION_*@ placeholders which get substituted here
+configure_file(
+    "${CMAKE_SOURCE_DIR}/src/foo_qobuz.rc.in"
+    "${CMAKE_BINARY_DIR}/foo_qobuz.rc"
+    @ONLY
+)
+
 # ---- Plugin sources ------------------------------------------------------
 set(PLUGIN_SRCS
     src/main.cpp
@@ -201,7 +255,7 @@ set(PLUGIN_SRCS
     src/qobuz_playlist_loader.cpp
     src/qobuz_prefs.cpp
     src/qobuz_search.cpp
-    src/foo_qobuz.rc
+    "${CMAKE_BINARY_DIR}/foo_qobuz.rc"
 )
 
 add_library(foo_qobuz SHARED
