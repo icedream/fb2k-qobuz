@@ -1,0 +1,151 @@
+name: Build .fb2k-component
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: "Name for the uploaded artifact (default: foo_qobuz-component)"
+        type: string
+        default: "foo_qobuz-component"
+        required: false
+    outputs:
+      component-path:
+        description: "Path to the packaged .fb2k-component file"
+        value: ${{ jobs.build.outputs.component-path }}
+      version:
+        description: "Version string derived from Git (e.g., 1.2.3-5-gABCDEF)"
+        value: ${{ jobs.build.outputs.version }}
+
+env:
+  XWIN_VERSION: "0.9.0"
+  LLVM_VERSION: "22"
+
+jobs:
+  build:
+    name: Build .fb2k-component (Linux cross-compile)
+    runs-on: ubuntu-latest
+    outputs:
+      component-path: ${{ steps.paths.outputs.component-path }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Needed for git describe to work correctly
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(git describe --always --tags --long 2>/dev/null | sed 's/^v//')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${VERSION}"
+
+      - name: Install build dependencies
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm.sh \
+            | sudo bash -s -- ${{ env.LLVM_VERSION }} all
+          sudo apt-get install -y --no-install-recommends cmake ninja-build
+          # Ensure unversioned aliases exist (clang-cl, lld-link, llvm-rc, llvm-mt)
+          for tool in clang clang-cl clang-cpp lld lld-link llvm-rc llvm-mt; do
+            sudo ln -sf /usr/bin/${tool}-${{ env.LLVM_VERSION }} /usr/local/bin/${tool} 2>/dev/null || true
+          done
+
+      - name: Install xwin
+        run: |
+          curl -fsSL https://github.com/Jake-Shadle/xwin/releases/download/${{ env.XWIN_VERSION }}/xwin-${{ env.XWIN_VERSION }}-x86_64-unknown-linux-musl.tar.gz \
+            | tar -xz --strip-components=1 --wildcards -C /usr/local/bin '*/xwin'
+          xwin --version
+
+      # Cache both xwin output and fb2k SDK. Key on CMakeLists.txt so a deps
+      # change (e.g. SDK version bump) busts the cache.
+      - name: Cache .deps
+        uses: actions/cache@v5
+        with:
+          path: .deps
+          key: deps-linux-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: deps-linux-
+
+      - name: Splat Windows SDK headers (xwin)
+        run: |
+          if [ ! -d .deps/xwin/crt/lib/x86_64 ] || [ ! -d .deps/xwin/crt/lib/x86 ]; then
+            xwin --accept-license \
+              --arch x86 --arch x86_64 \
+              --cache-dir .deps/xwin-cache \
+              splat --output .deps/xwin
+          fi
+
+      # ── x64 build ────────────────────────────────────────────────────────
+      - name: Configure (x64)
+        run: |
+          cmake --preset linux-cross \
+            -DXWIN_DIR="${{ github.workspace }}/.deps/xwin" \
+            -DXWIN_AUTO_DOWNLOAD=OFF \
+            -DXWIN_ACCEPT_LICENSE=OFF
+
+      - name: Build (x64)
+        run: cmake --build build-clang --parallel
+
+      # ── x86 build ────────────────────────────────────────────────────────
+      - name: Configure (x86)
+        run: |
+          cmake --preset linux-cross-x86 \
+            -DXWIN_DIR="${{ github.workspace }}/.deps/xwin" \
+            -DXWIN_AUTO_DOWNLOAD=OFF \
+            -DXWIN_ACCEPT_LICENSE=OFF
+
+      - name: Build (x86)
+        run: cmake --build build-clang-x86 --parallel
+
+      # ── Sign ─────────────────────────────────────────────────────────────
+      - name: Check code-signing prerequisites
+        id: codesign
+        env:
+          OSSLSIGNSERVER_URL: ${{ secrets.OSSLSIGNSERVER_URL }}
+          OSSLSIGNSERVER_API_KEY_SECRET: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}
+        run: |
+          if [[ -n "$OSSLSIGNSERVER_URL" && -n "$OSSLSIGNSERVER_API_KEY_SECRET" && -n "${{ vars.OSSLSIGNSERVER_PROFILE }}" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sign x64 DLL
+        if: steps.codesign.outputs.enabled == 'true'
+        uses: icedream/sign-with-osslsignserver-action@eca08fe56e099aa256be9a01c7d15978e665760a
+        with:
+          url: ${{ secrets.OSSLSIGNSERVER_URL }}
+          api-key-secret: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}
+          profile: ${{ vars.OSSLSIGNSERVER_PROFILE }}
+          file: ${{ github.workspace }}/build-clang/foo_qobuz.dll
+
+      - name: Sign x86 DLL
+        if: steps.codesign.outputs.enabled == 'true'
+        uses: icedream/sign-with-osslsignserver-action@eca08fe56e099aa256be9a01c7d15978e665760a
+        with:
+          url: ${{ secrets.OSSLSIGNSERVER_URL }}
+          api-key-secret: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}
+          profile: ${{ vars.OSSLSIGNSERVER_PROFILE }}
+          file: ${{ github.workspace }}/build-clang-x86/foo_qobuz.dll
+
+      # ── Package ──────────────────────────────────────────────────────────
+      - name: Package .fb2k-component
+        run: |
+          cmake \
+            -DFOO_DLL="${{ github.workspace }}/build-clang/foo_qobuz.dll" \
+            -DOUTPUT="${{ github.workspace }}/foo_qobuz.fb2k-component" \
+            -DARCH_X86=FALSE \
+            -DEXTRA_DLL="${{ github.workspace }}/build-clang-x86/foo_qobuz.dll" \
+            -P cmake/package_component.cmake
+
+      - name: Set component path output
+        id: paths
+        run: |
+          echo "component-path=${{ github.workspace }}/foo_qobuz.fb2k-component" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: foo_qobuz.fb2k-component
+          if-no-files-found: error
