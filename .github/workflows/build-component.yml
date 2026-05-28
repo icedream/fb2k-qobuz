@@ -112,21 +112,25 @@ jobs:
 
       - name: Sign x64 DLL
         if: steps.codesign.outputs.enabled == 'true'
-        uses: icedream/sign-with-osslsignserver-action@eca08fe56e099aa256be9a01c7d15978e665760a
+        uses: icedream/sign-with-osslsignserver-action@acc508fca11a08518189b3526ecd8d6ffdeaa4e9
         with:
           url: ${{ secrets.OSSLSIGNSERVER_URL }}
           api-key-secret: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}
           profile: ${{ vars.OSSLSIGNSERVER_PROFILE }}
           file: ${{ github.workspace }}/build-clang/foo_qobuz.dll
+          description: 'Qobuz for foobar2000'
+          description-url: 'https://github.com/icedream/fb2k-qobuz'
 
       - name: Sign x86 DLL
         if: steps.codesign.outputs.enabled == 'true'
-        uses: icedream/sign-with-osslsignserver-action@eca08fe56e099aa256be9a01c7d15978e665760a
+        uses: icedream/sign-with-osslsignserver-action@acc508fca11a08518189b3526ecd8d6ffdeaa4e9
         with:
           url: ${{ secrets.OSSLSIGNSERVER_URL }}
           api-key-secret: ${{ secrets.OSSLSIGNSERVER_API_KEY_SECRET }}
           profile: ${{ vars.OSSLSIGNSERVER_PROFILE }}
           file: ${{ github.workspace }}/build-clang-x86/foo_qobuz.dll
+          description: 'Qobuz for foobar2000'
+          description-url: 'https://github.com/icedream/fb2k-qobuz'
 
       # ── Package ──────────────────────────────────────────────────────────
       - name: Package .fb2k-component
